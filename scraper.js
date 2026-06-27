@@ -32,18 +32,75 @@ export async function importSwimmer(inputUrl) {
                 ? baseUrl
                 : `${baseUrl}?page=${pageNum}`;
 
+        console.log("\n====================================");
         console.log("Loading:", url);
 
         await page.goto(url, {
-            waitUntil: "domcontentloaded",
+            waitUntil: "networkidle",
             timeout: 60000
         });
 
-        const results = await page.evaluate(() => {
-            const cards = document.querySelectorAll(".meet-result, .meet-card");
+        // Give JS extra time to render.
+        await page.waitForTimeout(5000);
 
-            return Array.from(cards).map(card => card.innerText);
+        // Page title
+        const title = await page.title();
+        console.log("\nTITLE:");
+        console.log(title);
+
+        // Visible text
+        const bodyText = await page.locator("body").innerText();
+
+        console.log("\nBODY PREVIEW:");
+        console.log(bodyText.substring(0, 3000));
+
+        // Raw HTML
+        const html = await page.content();
+
+        console.log("\nHTML PREVIEW:");
+        console.log(html.substring(0, 5000));
+
+        // Save full HTML to logs if desired.
+        console.log("\nFULL HTML:");
+        console.log(html);
+
+        // Screenshot for debugging
+        try {
+            await page.screenshot({
+                path: `/tmp/swimcloud-page-${pageNum}.png`,
+                fullPage: true
+            });
+
+            console.log(
+                `Screenshot saved: /tmp/swimcloud-page-${pageNum}.png`
+            );
+        } catch (err) {
+            console.log("Screenshot failed:", err.message);
+        }
+
+        // List first 200 class names on the page.
+        const classes = await page.evaluate(() => {
+            return [
+                ...new Set(
+                    [...document.querySelectorAll("*")]
+                        .map(el => el.className)
+                        .filter(Boolean)
+                )
+            ].slice(0, 200);
         });
+
+        console.log("\nCLASSES:");
+        console.log(classes);
+
+        // Check your existing selectors.
+        const cardCount = await page
+            .locator(".meet-result, .meet-card")
+            .count();
+
+        console.log("\nMATCHING .meet-result/.meet-card:", cardCount);
+
+        // Temporary placeholder
+        const results = [];
 
         let newCount = 0;
 
@@ -61,7 +118,8 @@ export async function importSwimmer(inputUrl) {
             }
         }
 
-        console.log("New:", newCount);
+        console.log("\nNew:", newCount);
+        console.log("====================================\n");
 
         if (newCount === 0) {
             emptyPages++;
@@ -69,9 +127,13 @@ export async function importSwimmer(inputUrl) {
             emptyPages = 0;
         }
 
-        if (emptyPages >= 2) {
-            finished = true;
-        }
+        // Stop after first page while debugging.
+        finished = true;
+
+        // Uncomment later for pagination:
+        // if (emptyPages >= 2) {
+        //     finished = true;
+        // }
 
         pageNum++;
     }
