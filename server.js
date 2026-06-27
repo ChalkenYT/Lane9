@@ -29,14 +29,15 @@ app.post("/import", async (req, res) => {
       data
     });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      success: false,
-      error: "Import failed"
-    });
-  }
-});
+catch (err) {
+  console.error("🔥 IMPORT ERROR FULL:", err);
+
+  res.status(500).json({
+    success: false,
+    error: err.message,
+    stack: err.stack?.split("\n").slice(0, 10)
+  });
+}
 
 const PORT = process.env.PORT || 3000;
 
