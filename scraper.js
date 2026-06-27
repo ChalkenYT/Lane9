@@ -35,72 +35,67 @@ export async function importSwimmer(inputUrl) {
         console.log("\n====================================");
         console.log("Loading:", url);
 
+        // ✅ FIX: avoid networkidle (this was your timeout issue)
         await page.goto(url, {
-            waitUntil: "networkidle",
+            waitUntil: "domcontentloaded",
             timeout: 60000
         });
 
-        // Give JS extra time to render.
+        // ✅ allow JS rendering time (critical for SwimCloud)
         await page.waitForTimeout(5000);
 
-        // Page title
+        // ========================
+        // DEBUG INFO (keep for now)
+        // ========================
+
         const title = await page.title();
         console.log("\nTITLE:");
         console.log(title);
 
-        // Visible text
         const bodyText = await page.locator("body").innerText();
-
         console.log("\nBODY PREVIEW:");
         console.log(bodyText.substring(0, 3000));
 
-        // Raw HTML
         const html = await page.content();
-
         console.log("\nHTML PREVIEW:");
         console.log(html.substring(0, 5000));
 
-        // Save full HTML to logs if desired.
-        console.log("\nFULL HTML:");
-        console.log(html);
-
-        // Screenshot for debugging
-        try {
-            await page.screenshot({
-                path: `/tmp/swimcloud-page-${pageNum}.png`,
-                fullPage: true
-            });
-
-            console.log(
-                `Screenshot saved: /tmp/swimcloud-page-${pageNum}.png`
-            );
-        } catch (err) {
-            console.log("Screenshot failed:", err.message);
-        }
-
-        // List first 200 class names on the page.
-        const classes = await page.evaluate(() => {
-            return [
-                ...new Set(
-                    [...document.querySelectorAll("*")]
-                        .map(el => el.className)
-                        .filter(Boolean)
-                )
-            ].slice(0, 200);
-        });
-
-        console.log("\nCLASSES:");
-        console.log(classes);
-
-        // Check your existing selectors.
         const cardCount = await page
             .locator(".meet-result, .meet-card")
             .count();
 
-        console.log("\nMATCHING .meet-result/.meet-card:", cardCount);
+        console.log("\nMATCHING ELEMENTS:", cardCount);
 
-        // Temporary placeholder
-        const results = [];
+        // ========================
+        // EXTRA SAFETY CHECK
+        // ========================
+
+        const isCloudflare = html.includes("Just a moment")
+            || html.includes("Checking your browser")
+            || title.toLowerCase().includes("just a moment");
+
+        if (isCloudflare) {
+            console.log("\n🚨 Cloudflare challenge detected");
+            await browser.close();
+            return {
+                success: false,
+                error: "Cloudflare blocking request"
+            };
+        }
+
+        // ========================
+        // ACTUAL SCRAPE
+        // ========================
+
+        const results = await page.evaluate(() => {
+            const cards = document.querySelectorAll(
+                ".meet-result, .meet-card"
+            );
+
+            return Array.from(cards).map(card => card.innerText);
+        });
+
+        console.log("\nFOUND RESULTS:", results.length);
 
         let newCount = 0;
 
@@ -118,8 +113,7 @@ export async function importSwimmer(inputUrl) {
             }
         }
 
-        console.log("\nNew:", newCount);
-        console.log("====================================\n");
+        console.log("New:", newCount);
 
         if (newCount === 0) {
             emptyPages++;
@@ -127,15 +121,14 @@ export async function importSwimmer(inputUrl) {
             emptyPages = 0;
         }
 
-        // Stop after first page while debugging.
-        finished = true;
-
-        // Uncomment later for pagination:
-        // if (emptyPages >= 2) {
-        //     finished = true;
-        // }
+        if (emptyPages >= 2) {
+            finished = true;
+        }
 
         pageNum++;
+
+        // (optional safety limit while debugging)
+        if (pageNum > 20) finished = true;
     }
 
     await browser.close();
